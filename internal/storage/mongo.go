@@ -1,17 +1,16 @@
 package storage
 
 import (
+	"chi/BTC-PAYMENTS/internal/models"
 	"chi/BTC-PAYMENTS/pkg/logger"
-	"chi/BTC-PAYMENTS/pkg/models"
 	"context"
 	"errors"
 	"fmt"
-	"time"
-
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"time"
 )
 
 // MongoRepository реализует интерфейс models.Repository для MongoDB

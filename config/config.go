@@ -54,7 +54,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Server.Host = serverHost
 	}
 
-	if btcpayBaseURL := os.Getenv("BTCPAY_BASE_URL"); btcpayBaseURL != "" {
+	if btcpayBaseURL := os.Getenv("BTCPAY_URL"); btcpayBaseURL != "" {
 		cfg.BTCPay.BaseURL = btcpayBaseURL
 	}
 

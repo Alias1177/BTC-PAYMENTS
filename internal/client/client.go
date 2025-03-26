@@ -121,7 +121,10 @@ func (c *BTCPayClient) CreateInvoice(invoiceReq InvoiceRequest) (*InvoiceRespons
 	// Парсинг времени истечения
 	var expirationTime time.Time
 	if expiryStr, ok := btcpayResp["expirationTime"].(string); ok {
-		expirationTime, _ = time.Parse(time.RFC3339, expiryStr)
+		expirationTime, err = time.Parse(time.RFC3339, expiryStr)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка во время парсинга времени истечение")
+		}
 	}
 
 	// Создание ответа
@@ -187,7 +190,10 @@ func (c *BTCPayClient) GetInvoice(invoiceID string) (*InvoiceStatus, error) {
 	// Получение даты оплаты
 	var paidDate time.Time
 	if paidDateStr, ok := btcpayResp["paidDate"].(string); ok {
-		paidDate, _ = time.Parse(time.RFC3339, paidDateStr)
+		paidDate, err = time.Parse(time.RFC3339, paidDateStr)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка во время получение даты оплаты")
+		}
 	}
 
 	// Создание ответа

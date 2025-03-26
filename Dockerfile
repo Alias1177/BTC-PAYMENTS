@@ -11,7 +11,7 @@ COPY . .
 RUN go mod download
 
 # Компилируем Go-приложение, добавляем флаги для уменьшения размера бинарника
-RUN go build -ldflags="-w -s" -o /app/server ./cmd/server
+RUN go build -ldflags="-w -s" -o /app/service ./cmd/service
 
 # Используем минималистичный образ alpine:latest для финального контейнера
 FROM alpine:latest
