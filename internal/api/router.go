@@ -1,9 +1,9 @@
 package api
 
 import (
-	"chi/BTC-PAYMENTS/internal/client"
-	"chi/BTC-PAYMENTS/internal/models"
-	"chi/BTC-PAYMENTS/pkg/logger"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/client"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/models"
+	"github.com/Alias1177/BTC-PAYMENTS/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"

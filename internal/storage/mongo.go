@@ -1,11 +1,11 @@
 package storage
 
 import (
-	"chi/BTC-PAYMENTS/internal/models"
-	"chi/BTC-PAYMENTS/pkg/logger"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/models"
+	"github.com/Alias1177/BTC-PAYMENTS/pkg/logger"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"

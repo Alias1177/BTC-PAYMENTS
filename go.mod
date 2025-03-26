@@ -1,4 +1,4 @@
-module chi/BTC-PAYMENTS
+module github.com/Alias1177/BTC-PAYMENTS
 
 go 1.24.0
 

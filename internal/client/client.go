@@ -102,9 +102,32 @@ func (c *BTCPayClient) CreateInvoice(invoiceReq InvoiceRequest) (*InvoiceRespons
 		return nil, fmt.Errorf("ошибка чтения ответа: %w", err)
 	}
 
-	// Обработка ошибок
+	// Улучшенная обработка ошибок
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("BTCPay Server вернул ошибку: %d - %s", resp.StatusCode, string(body))
+		var errMsg string
+
+		// Пытаемся получить сообщение об ошибке из JSON
+		var errResp map[string]interface{}
+		if err := json.Unmarshal(body, &errResp); err == nil {
+			if msg, ok := errResp["error"].(string); ok {
+				errMsg = msg
+			}
+		}
+
+		if errMsg == "" {
+			errMsg = string(body)
+		}
+
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return nil, fmt.Errorf("ошибка авторизации BTCPay: %s", errMsg)
+		case http.StatusNotFound:
+			return nil, fmt.Errorf("ресурс не найден в BTCPay: %s", errMsg)
+		case http.StatusBadRequest:
+			return nil, fmt.Errorf("неверные параметры запроса к BTCPay: %s", errMsg)
+		default:
+			return nil, fmt.Errorf("BTCPay вернул ошибку %d: %s", resp.StatusCode, errMsg)
+		}
 	}
 
 	// Парсинг ответа

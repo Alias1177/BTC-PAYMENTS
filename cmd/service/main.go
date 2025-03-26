@@ -1,13 +1,13 @@
 package main
 
 import (
-	"chi/BTC-PAYMENTS/config"
-	"chi/BTC-PAYMENTS/internal/api"
-	"chi/BTC-PAYMENTS/internal/client"
-	"chi/BTC-PAYMENTS/internal/storage"
-	"chi/BTC-PAYMENTS/pkg/logger"
 	"flag"
 	"fmt"
+	"github.com/Alias1177/BTC-PAYMENTS/config"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/api"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/client"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/storage"
+	"github.com/Alias1177/BTC-PAYMENTS/pkg/logger"
 )
 
 func main() {

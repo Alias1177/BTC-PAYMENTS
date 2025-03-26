@@ -2,12 +2,12 @@ package api
 
 import (
 	"bytes"
-	"chi/BTC-PAYMENTS/internal/client"
-	"chi/BTC-PAYMENTS/internal/models"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/client"
+	"github.com/Alias1177/BTC-PAYMENTS/internal/models"
 	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
@@ -133,7 +133,7 @@ func verifyWebhookSignature(signature, payload, secret string) bool {
 	expectedSignature := hex.EncodeToString(h.Sum(nil))
 
 	// Сравнение вычисленной подписи с полученной
-	return hmac.Equal([]byte(signature), []byte(expectedSignature))
+	return signature == expectedSignature
 }
 
 // HandleWebhook обрабатывает webhook-уведомления от BTCPay Server
@@ -150,7 +150,7 @@ func (h *Handler) HandleWebhook(c *gin.Context) {
 	// Получение сигнатуры для верификации
 	signature := c.GetHeader("BTCPay-Sig")
 
-	// Чтение тела запроса (выполняем только один раз)
+	// Чтение тела запроса
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		h.logger.Error("Ошибка чтения тела webhook-запроса: %v", err)
@@ -158,10 +158,10 @@ func (h *Handler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	// Восстановление тела для последующего использования
+	// Восстановление тела
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	// Проверка сигнатуры (если применимо)
+	// Проверка сигнатуры
 	if signature != "" && h.webhookSecret != "" {
 		isValid := verifyWebhookSignature(signature, string(body), h.webhookSecret)
 		if !isValid {
