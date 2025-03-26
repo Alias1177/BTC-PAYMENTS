@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"github.com/Alias1177/BTC-PAYMENTS/internal/client"
@@ -133,7 +134,7 @@ func verifyWebhookSignature(signature, payload, secret string) bool {
 	expectedSignature := hex.EncodeToString(h.Sum(nil))
 
 	// Сравнение вычисленной подписи с полученной
-	return signature == expectedSignature
+	return subtle.ConstantTimeCompare([]byte(signature), []byte(expectedSignature)) == 1
 }
 
 // HandleWebhook обрабатывает webhook-уведомления от BTCPay Server
