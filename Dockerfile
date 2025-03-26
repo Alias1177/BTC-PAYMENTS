@@ -1,30 +1,38 @@
-FROM golang:1.21-alpine as builder
+# Используем образ golang:1.24-alpine как базовый для этапа сборки
+FROM golang:1.24-alpine AS builder
 
+# Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
-# Copy go.mod and go.sum
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy source code
+# Копируем все файлы из текущей директории на хосте в контейнер
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/btcpay-service ./cmd/service
+# Скачиваем зависимости, указанные в go.mod
+RUN go mod download
 
-# Use alpine for smaller final image
+# Компилируем Go-приложение, добавляем флаги для уменьшения размера бинарника
+RUN go build -ldflags="-w -s" -o /app/server ./cmd/server
+
+# Используем минималистичный образ alpine:latest для финального контейнера
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates
+# Устанавливаем сертификаты для HTTPS-запросов
+RUN apk add --no-cache ca-certificates
 
-WORKDIR /app
+# Копируем скомпилированный бинарник из этапа сборки
+COPY --from=builder /app/server /app/server
 
-# Copy binary from builder
-COPY --from=builder /app/btcpay-service .
-# Copy config files
-COPY --from=builder /app/config ./config
+# Копируем директорию config с конфигурационными файлами
+COPY config /app/config
 
+# Создаем группу и пользователя для повышения безопасности (не root)
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Переключаемся на пользователя appuser
+USER appuser
+
+# Открываем порт 8080 для приложения
 EXPOSE 8080
 
-# Run the application
-CMD ["/app/btcpay-service"]
+# Задаем команду для запуска приложения
+CMD ["/app/server"]

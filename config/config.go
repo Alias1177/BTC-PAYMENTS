@@ -14,11 +14,11 @@ type Config struct {
 	} `yaml:"server"`
 
 	BTCPay struct {
-		BaseURL string `yaml:"base_url"`
-		APIKey  string `yaml:"api_key"`
-		StoreID string `yaml:"store_id"`
-	} `yaml:"btcpay"`
-
+		BaseURL       string `yaml:"base_url"`
+		APIKey        string `yaml:"api_key"`
+		StoreID       string `yaml:"store_id"`
+		WebhookSecret string `yaml:"webhook_secret"` // Добавлено новое поле
+	}
 	MongoDB struct {
 		URI        string `yaml:"uri"`
 		Database   string `yaml:"database"`

@@ -1,12 +1,19 @@
 package api
 
 import (
+	"bytes"
 	"chi/BTC-PAYMENTS/internal/client"
+	"chi/BTC-PAYMENTS/internal/models"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"github.com/gin-gonic/gin"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 // CreateInvoice обрабатывает создание нового счета
@@ -58,9 +65,25 @@ func (h *Handler) CreateInvoice(c *gin.Context) {
 		return
 	}
 
-	// TODO: Сохранение в базу данных, когда будет реализовано хранилище
+	// Сохранение в базу данных ПОСЛЕ успешного создания инвойса
 	if h.storage != nil {
-		// Здесь будет код сохранения транзакции
+		tx := &models.Transaction{
+			InvoiceID:     invoice.InvoiceID, // Используем поле из полученного ответа
+			OrderID:       req.OrderID,       // Берем из запроса на создание инвойса
+			Status:        invoice.Status,    // Статус из ответа BTCPay
+			PriceAmount:   req.PriceAmount,   // Сумма из запроса
+			PriceCurrency: req.PriceCurrency, // Валюта из запроса
+			BuyerEmail:    req.BuyerEmail,    // Email из запроса (если есть)
+			CreatedAt:     time.Now(),        // Текущее время
+			UpdatedAt:     time.Now(),        // Текущее время
+		}
+
+		if err := h.storage.CreateTransaction(tx); err != nil {
+			h.logger.Error("Ошибка сохранения транзакции: %v", err)
+			// Продолжаем выполнение, так как инвойс уже создан в BTCPay
+		} else {
+			h.logger.Info("Транзакция успешно сохранена в БД: %s", invoice.InvoiceID)
+		}
 	}
 
 	c.JSON(http.StatusCreated, invoice)
@@ -103,6 +126,16 @@ func (h *Handler) GetInvoice(c *gin.Context) {
 	c.JSON(http.StatusOK, invoice)
 }
 
+func verifyWebhookSignature(signature, payload, secret string) bool {
+	// Создание HMAC с использованием SHA-256
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(payload))
+	expectedSignature := hex.EncodeToString(h.Sum(nil))
+
+	// Сравнение вычисленной подписи с полученной
+	return hmac.Equal([]byte(signature), []byte(expectedSignature))
+}
+
 // HandleWebhook обрабатывает webhook-уведомления от BTCPay Server
 // @Summary Обработка уведомлений от BTCPay Server
 // @Description Принимает и обрабатывает webhook-уведомления о изменении статуса счетов
@@ -114,28 +147,106 @@ func (h *Handler) GetInvoice(c *gin.Context) {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/webhooks/btcpay [post]
 func (h *Handler) HandleWebhook(c *gin.Context) {
-	// Проверка сигнатуры (для повышения безопасности)
-	// signature := c.GetHeader("X-Signature")
-	// TODO: Реализовать проверку сигнатуры
+	// Получение сигнатуры для верификации
+	signature := c.GetHeader("BTCPay-Sig")
 
-	var webhookEvent map[string]interface{}
-	if err := c.ShouldBindJSON(&webhookEvent); err != nil {
+	// Чтение тела запроса (выполняем только один раз)
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		h.logger.Error("Ошибка чтения тела webhook-запроса: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка чтения запроса"})
+		return
+	}
+
+	// Восстановление тела для последующего использования
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	// Проверка сигнатуры (если применимо)
+	if signature != "" && h.webhookSecret != "" {
+		isValid := verifyWebhookSignature(signature, string(body), h.webhookSecret)
+		if !isValid {
+			h.logger.Warn("Недействительная подпись webhook: %s", signature)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительная подпись"})
+			return
+		}
+	}
+
+	// Парсинг тела запроса
+	var event models.WebhookEvent
+	if err := json.Unmarshal(body, &event); err != nil {
 		h.logger.Error("Ошибка парсинга webhook-события: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
 		return
 	}
 
-	// Извлечение и логирование информации о событии
-	eventType, _ := webhookEvent["type"].(string)
-	invoiceId, _ := webhookEvent["invoiceId"].(string)
+	// Остальной код обработки события
+	h.logger.Info("Получено webhook-событие типа '%s' для инвойса %s",
+		event.Type, event.InvoiceID)
 
-	h.logger.Info("Получено webhook-событие: %s для инвойса %s", eventType, invoiceId)
+	// Обработка события в зависимости от типа
+	switch event.Type {
+	case "InvoiceCreated":
+		// Обычно не требует действий, так как инвойс уже создан через API
+		break
 
-	// Обработка события (будет реализовано позднее с использованием хранилища)
-	if h.storage != nil {
-		// TODO: Обновление статуса транзакции в базе данных
+	case "InvoiceReceivedPayment":
+		// Обновление информации о платеже
+		if h.storage != nil {
+			// Получаем актуальные данные из BTCPay Server
+			invoice, err := h.btcpayClient.GetInvoice(event.InvoiceID)
+			if err != nil {
+				h.logger.Error("Ошибка получения информации об инвойсе: %v", err)
+				break
+			}
+
+			// Обновляем информацию о платеже в БД
+			err = h.storage.UpdateTransactionPaymentInfo(
+				event.InvoiceID,
+				invoice.AmountPaid,
+				invoice.Currency,
+			)
+			if err != nil {
+				h.logger.Error("Ошибка обновления информации о платеже: %v", err)
+			}
+		}
+		break
+
+	case "InvoiceProcessing":
+		// Инвойс в процессе обработки (платеж получен, но еще не подтвержден)
+		if h.storage != nil {
+			err := h.storage.UpdateTransactionStatus(event.InvoiceID, "processing")
+			if err != nil {
+				h.logger.Error("Ошибка обновления статуса транзакции: %v", err)
+			}
+		}
+		break
+
+	case "InvoiceSettled", "InvoiceCompleted":
+		// Инвойс успешно оплачен и подтвержден
+		if h.storage != nil {
+			err := h.storage.UpdateTransactionStatus(event.InvoiceID, "completed")
+			if err != nil {
+				h.logger.Error("Ошибка обновления статуса транзакции: %v", err)
+			}
+		}
+		break
+
+	case "InvoiceExpired", "InvoiceInvalid":
+		// Инвойс просрочен или недействителен
+		if h.storage != nil {
+			status := strings.ToLower(event.Type[7:]) // "expired" или "invalid"
+			err := h.storage.UpdateTransactionStatus(event.InvoiceID, status)
+			if err != nil {
+				h.logger.Error("Ошибка обновления статуса транзакции: %v", err)
+			}
+		}
+		break
+
+	default:
+		h.logger.Warn("Получено неизвестное webhook-событие типа: %s", event.Type)
 	}
 
+	// Отправляем успешный ответ для подтверждения получения события
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
 }
 

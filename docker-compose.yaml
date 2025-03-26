@@ -1,0 +1,226 @@
+# Определяем сервисы для Docker Compose
+services:
+  # Сервис приложения (основной бэкенд)
+  app:
+    # Указываем, что нужно собрать образ из Dockerfile
+    build:
+      # Контекст сборки — текущая директория
+      context: .
+      # Имя файла для сборки
+      dockerfile: Dockerfile
+    # Задаем имя контейнера
+    container_name: btcpay-integration
+    # Политика перезапуска: перезапускать, если не остановлен вручную
+    restart: unless-stopped
+    # Прокидываем порт 8080 хоста на порт 8080 контейнера
+    ports:
+      - "8080:8080"
+    # Переменные окружения для приложения
+    environment:
+      # Режим работы Gin (release для продакшена)
+      - GIN_MODE=release
+      # URI для подключения к MongoDB
+      - MONGO_URI=mongodb://mongo:27017
+      # Имя базы данных в MongoDB
+      - MONGO_DATABASE=btcpay
+      # URL для подключения к BTCPay Server
+      - BTCPAY_URL=https://btcpay.example.com
+      # API-ключ для BTCPay (из переменной окружения)
+      - BTCPAY_API_KEY=${BTCPAY_API_KEY}
+      # ID магазина в BTCPay (из переменной окружения)
+      - BTCPAY_STORE_ID=${BTCPAY_STORE_ID}
+      # Уровень логирования
+      - LOG_LEVEL=info
+    # Зависимости сервиса
+    depends_on:
+      # Ждем, пока mongo станет "здоровым" (по healthcheck)
+      mongo:
+        condition: service_healthy
+    # Подключаем сервис к сети
+    networks:
+      - btcpay-network
+    # Настраиваем логирование с ротацией
+    logging:
+      # Драйвер для хранения логов
+      driver: json-file
+      # Опции ротации
+      options:
+        # Максимальный размер одного файла логов — 10 МБ
+        max-size: "10m"
+        # Максимальное количество файлов логов — 3
+        max-file: "3"
+
+  # Сервис MongoDB
+  mongo:
+    # Используем образ mongo версии 6.0
+    image: mongo:latest
+    # Монтируем том для сохранения данных
+    volumes:
+      - mongo_data:/data/db
+    # Переменные окружения
+    environment:
+      # Имя пользователя для root-доступа
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      # Пароль для root-доступа
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+    # Проверка состояния сервиса
+    healthcheck:
+      # Команда для проверки: пинг MongoDB
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      # Интервал проверки
+      interval: 10s
+      # Таймаут проверки
+      timeout: 5s
+      # Количество попыток
+      retries: 5
+    networks:
+      - btcpay-network
+    logging: # Повторяющиеся настройки логирования уже описаны выше
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Сервис Prometheus для мониторинга
+  prometheus:
+    # Используем образ Prometheus
+    image: prom/prometheus:latest
+    volumes:
+      # Монтируем конфигурационный файл Prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      # Том для хранения данных Prometheus
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - btcpay-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Сервис Grafana для визуализации метрик
+  grafana:
+    # Используем образ Grafana
+    image: grafana/grafana:latest
+    # Зависит от Prometheus
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    volumes:
+      # Том для хранения данных Grafana
+      - grafana_data:/var/lib/grafana
+      # Монтируем конфигурацию Grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      # Пароль администратора Grafana
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+    networks:
+      - btcpay-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Сервис Loki для логирования
+  loki:
+    # Используем образ Loki
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    # Команда для запуска с указанием конфигурационного файла
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      # Монтируем конфигурацию Loki
+      - ./loki/config.yaml:/etc/loki/local-config.yaml
+    networks:
+      - btcpay-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Сервис BTCPay Server
+  btcpay:
+    # Используем образ BTCPay Server
+    image: btcpayserver/btcpayserver:latest
+    depends_on:
+      - btcpay-postgres
+      - btcpay-nbxplorer
+    environment:
+      # Настройки подключения к PostgreSQL
+      - BTCPAY_POSTGRES=User=postgres;Host=btcpay-postgres;Port=5432;Database=btcpayserver
+      # Сеть для BTCPay (regtest для тестирования)
+      - BTCPAY_NETWORK=regtest
+    ports:
+      - "8081:80"
+    networks:
+      - btcpay-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Сервис PostgreSQL для BTCPay
+  btcpay-postgres:
+    # Используем образ PostgreSQL
+    image: postgres:latest
+    environment:
+      # Пароль для PostgreSQL
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      # Том для хранения данных PostgreSQL
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Команда для проверки готовности PostgreSQL
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - btcpay-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Сервис NBXplorer для BTCPay
+  btcpay-nbxplorer:
+    # Используем образ NBXplorer
+    image: nicolasdorier/nbxplorer:latest
+    environment:
+      # Сеть для NBXplorer (regtest для тестирования)
+      - NBXPLORER_NETWORK=regtest
+    ports:
+      - "32838:32838"
+    volumes:
+      # Том для хранения данных NBXplorer
+      - nbxplorer_data:/root/.nbxplorer
+    networks:
+      - btcpay-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Определяем сеть для взаимодействия сервисов
+networks:
+  # Название сети
+  btcpay-network:
+    # Тип сети (bridge — изолированная сеть)
+    driver: bridge
+
+# Определяем тома для хранения данных
+volumes:
+  mongo_data:
+  prometheus_data:
+  grafana_data:
+  postgres_data:
+  nbxplorer_data:

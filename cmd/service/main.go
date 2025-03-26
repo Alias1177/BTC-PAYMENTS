@@ -4,6 +4,7 @@ import (
 	"chi/BTC-PAYMENTS/config"
 	"chi/BTC-PAYMENTS/internal/api"
 	"chi/BTC-PAYMENTS/internal/client"
+	"chi/BTC-PAYMENTS/internal/storage"
 	"chi/BTC-PAYMENTS/pkg/logger"
 	"flag"
 	"fmt"
@@ -32,9 +33,24 @@ func main() {
 		cfg.BTCPay.StoreID,
 	)
 
-	// Create and setup router
-	router := api.SetupRouter(btcpayClient, nil, log) // We'll add storage implementation later
+	// Инициализация MongoDB репозитория
+	repository, err := storage.NewMongoRepository(
+		cfg.MongoDB.URI,
+		cfg.MongoDB.Database,
+		cfg.MongoDB.Collection,
+		log,
+	)
+	if err != nil {
+		log.Fatal("Ошибка инициализации MongoDB: %v", err)
+	}
+	defer repository.Close()
 
+	// Создание и настройка маршрутизатора с хранилищем
+	// Получение webhookSecret из конфигурации
+	webhookSecret := cfg.BTCPay.WebhookSecret
+
+	// Создание и настройка маршрутизатора
+	router := api.SetupRouter(btcpayClient, repository, log, webhookSecret)
 	// Start the server
 	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	log.Info("Server starting on %s", serverAddr)

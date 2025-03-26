@@ -2,35 +2,36 @@ package api
 
 import (
 	"chi/BTC-PAYMENTS/internal/client"
+	"chi/BTC-PAYMENTS/internal/models"
 	"chi/BTC-PAYMENTS/pkg/logger"
-	"chi/BTC-PAYMENTS/pkg/models"
-	"net/http"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"net/http"
+	"time"
 )
 
 // Handler содержит зависимости для обработчиков API
 type Handler struct {
-	btcpayClient *client.BTCPayClient
-	storage      models.Repository
-	logger       *logger.Logger
+	btcpayClient  *client.BTCPayClient
+	storage       models.Repository
+	logger        *logger.Logger
+	webhookSecret string
 }
 
 // NewHandler создает новый экземпляр Handler
-func NewHandler(btcpayClient *client.BTCPayClient, storage models.Repository, logger *logger.Logger) *Handler {
+func NewHandler(btcpayClient *client.BTCPayClient, storage models.Repository, logger *logger.Logger, webhookSecret string) *Handler {
 	return &Handler{
-		btcpayClient: btcpayClient,
-		storage:      storage,
-		logger:       logger,
+		btcpayClient:  btcpayClient,
+		storage:       storage,
+		logger:        logger,
+		webhookSecret: webhookSecret,
 	}
 }
 
 // SetupRouter настраивает и возвращает маршрутизатор Gin
-func SetupRouter(btcpayClient *client.BTCPayClient, storage models.Repository, logger *logger.Logger) *gin.Engine {
+func SetupRouter(btcpayClient *client.BTCPayClient, storage models.Repository, logger *logger.Logger, webhookSecret string) *gin.Engine {
 	// Установка режима работы Gin (возможно, в production понадобится режим release)
 	if gin.Mode() == gin.DebugMode {
 		gin.SetMode(gin.DebugMode)
@@ -71,7 +72,7 @@ func SetupRouter(btcpayClient *client.BTCPayClient, storage models.Repository, l
 	})
 
 	// Создаем обработчик API
-	handler := NewHandler(btcpayClient, storage, logger)
+	handler := NewHandler(btcpayClient, storage, logger, webhookSecret)
 
 	// Базовый маршрут для проверки работоспособности
 	router.GET("/health", func(c *gin.Context) {

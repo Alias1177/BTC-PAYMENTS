@@ -30,6 +30,7 @@ type Repository interface {
 	// UpdateTransactionStatus обновляет статус транзакции по ID инвойса
 	UpdateTransactionStatus(invoiceID, status string) error
 
+	UpdateTransactionPaymentInfo(invoiceID string, amountPaid float64, currency string) error
 	// GetTransactionByInvoiceID получает транзакцию по ID инвойса
 	GetTransactionByInvoiceID(invoiceID string) (*Transaction, error)
 
