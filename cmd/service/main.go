@@ -29,13 +29,18 @@ func main() {
 		Config: cfg,
 	}
 
-	r.POST("/assign-invoice", h.AssignInvoiceHandler)
-	r.GET("/check-payment", h.CheckPaymentHandler)
-	r.GET("/user-payments", h.GetUserPaymentsHandler)
+	api := r.Group("/api")
+	{
+		// Регистрируем эндпоинты внутри этой группы
+		api.POST("/assign-invoice", h.AssignInvoiceHandler)
+		api.GET("/check-payment", h.CheckPaymentHandler)
+		api.GET("/user-payments", h.GetUserPaymentsHandler)
+	}
 
 	r.POST("/webhook", hook.NowPaymentsWebhookHandler(dbConn.Conn()))
 
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
+
 }
