@@ -1,60 +1,41 @@
 package main
 
 import (
-	"flag"
-	"fmt"
 	"github.com/Alias1177/BTC-PAYMENTS/config"
-	"github.com/Alias1177/BTC-PAYMENTS/internal/api"
-	"github.com/Alias1177/BTC-PAYMENTS/internal/client"
-	"github.com/Alias1177/BTC-PAYMENTS/internal/storage"
-	"github.com/Alias1177/BTC-PAYMENTS/pkg/logger"
+	"github.com/Alias1177/BTC-PAYMENTS/hook" // Убедимся, что пакет hook существует в проекте
+	"github.com/Alias1177/BTC-PAYMENTS/internal/handler"
+	"github.com/Alias1177/BTC-PAYMENTS/repo"
+	"github.com/gin-gonic/gin"
+	"log"
 )
 
 func main() {
-	// Parse command line flags
-	configPath := flag.String("config", "config/config.yaml", "Path to config file")
-	logLevel := flag.Int("log-level", int(logger.INFO), "Log level (0-4)")
-	flag.Parse()
-
-	// Create logger
-	log := logger.New(logger.LogLevel(*logLevel))
-	log.Info("Starting BTC-PAYMENTS service")
-
-	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.Load(".env")
 	if err != nil {
-		log.Fatal("Failed to load configuration: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Create BTCPay client
-	btcpayClient := client.NewBTCPayClient(
-		cfg.BTCPay.BaseURL,
-		cfg.BTCPay.APIKey,
-		cfg.BTCPay.StoreID,
-	)
-
-	// Инициализация MongoDB репозитория
-	repository, err := storage.NewMongoRepository(
-		cfg.MongoDB.URI,
-		cfg.MongoDB.Database,
-		cfg.MongoDB.Collection,
-		log,
-	)
+	dbConn, err := repo.SetupDB(cfg.DataBase)
 	if err != nil {
-		log.Fatal("Ошибка инициализации MongoDB: %v", err)
+		log.Fatalf("Failed to setup database: %v", err)
 	}
-	defer repository.Close()
 
-	// Создание и настройка маршрутизатора с хранилищем
-	// Получение webhookSecret из конфигурации
-	webhookSecret := cfg.BTCPay.WebhookSecret
+	r := gin.Default()
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
 
-	// Создание и настройка маршрутизатора
-	router := api.SetupRouter(btcpayClient, repository, log, webhookSecret)
-	// Start the server
-	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
-	log.Info("Server starting on %s", serverAddr)
-	if err := router.Run(serverAddr); err != nil {
-		log.Fatal("Failed to start server: %v", err)
+	h := &handler.Handler{
+		DB:     dbConn,
+		Config: cfg,
+	}
+
+	r.POST("/assign-invoice", h.AssignInvoiceHandler)
+	r.GET("/check-payment", h.CheckPaymentHandler)
+	r.GET("/user-payments", h.GetUserPaymentsHandler)
+
+	r.POST("/webhook", hook.NowPaymentsWebhookHandler(dbConn.Conn()))
+
+	if err := r.Run(":" + cfg.Port); err != nil {
+		log.Fatalf("Server failed: %v", err)
 	}
 }
